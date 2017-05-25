@@ -1,5 +1,5 @@
--- Name: My Name
--- UID: u12345678
+-- Name: Aditya Sharma
+-- UID: u6051965
 -- Collaborators: Jane Doe, Joe Bloggs
 module Sudoku
   ( allBlanks
@@ -17,26 +17,16 @@ module Sudoku
   , (!!=)
   , update
   , solve
+  , example
+  , solver
   ) where
 
 import Test.QuickCheck
-
--- A matrix is a list of rows.
-type Matrix a = [Row a]
-
--- A row is a list of values
-type Row a = [a]
-
--- A Sudoku puzzle is a matrix of cells
-newtype Sudoku =
-  Sudoku (Matrix Cell)
-  deriving (Show, Eq)
-
--- | cells extracts the cells from a Sudoku
-cells (Sudoku m) = m
-
--- Each cell may contain a number from 1 to 9, or nothing
-type Cell = Maybe Int
+import Data.Char
+import Data.Maybe
+import Data.List.Split
+import Data.List
+import Data.String.Utils
 
 example :: Sudoku
 example =
@@ -133,9 +123,32 @@ example =
       ]
     ]
 
+-- A matrix is a list of rows.
+type Matrix a = [Row a]
+
+-- A row is a list of values.
+type Row a = [a]
+
+-- Each cell may contain a number from 1 to 9, or nothing
+type Cell = Maybe Int
+
+-- A Sudoku puzzle is a matrix of cells.
+newtype Sudoku =
+  Sudoku (Matrix Cell)
+  deriving (Show, Eq)
+
+-- | cells extracts the cells from a Sudoku
+cells (Sudoku m) = m
+
+
+
 -- allBlanks is a Sudoku with just blanks
 allBlanks :: Sudoku
-allBlanks = undefined -- TODO
+allBlanks = Sudoku
+            $ replicate 9
+            $ replicate 9 Nothing
+
+
 
 -- | isSudoku checks if a Sudoku has the proper dimensions
 -- >>> isSudoku (Sudoku [])
@@ -147,11 +160,17 @@ allBlanks = undefined -- TODO
 -- >>> isSudoku (Sudoku (tail (cells example)))
 -- False
 isSudoku :: Sudoku -> Bool
-isSudoku = undefined -- TODO
+isSudoku (Sudoku s) = all (==9) (map length $ s) == True
+                      &&
+                      length (map length $ s) == 9
+
+
 
 -- | noBlanks checks if a Sudoku has no blanks
 noBlanks :: Sudoku -> Bool
-noBlanks = undefined -- TODO
+noBlanks (Sudoku s) = all (==0) [length $ filter (==Nothing) (concat $ s)]
+
+
 
 -- | printSudoku prints a Sudoku as a 9 x 9 grid
 -- Example:
@@ -164,8 +183,22 @@ noBlanks = undefined -- TODO
 --    . . 5 3 . 8 9 . .
 --    . 8 3 . . . . 6 .
 --    . . 7 6 9 . . 4 3
+
+converter :: Sudoku -> [[Char]]
+converter (Sudoku s) = map concat
+                       $ chunksOf 9
+                       $ map (replace "0" ".")
+                       $ map show
+                       $ map (fromMaybe 0)
+                       $ concat
+                       $ s
+
 printSudoku :: Sudoku -> IO ()
-printSudoku = undefined -- TODO
+printSudoku (Sudoku s) = mapM_ putStrLn
+                         $ converter
+                         $ Sudoku s
+
+
 
 -- | cell generates an arbitrary cell in a Sudoku
 -- The frequency of Nothing versus Just n values is currently 90% versus 10%,
@@ -175,6 +208,8 @@ cell =
   frequency
     [(10, oneof [return (Just n) | n <- [1 .. 9]]), (90, return Nothing)]
 
+
+
 -- | An instance for generating Arbitrary Sudokus
 -- prop> isSudoku s
 instance Arbitrary Sudoku where
@@ -182,27 +217,59 @@ instance Arbitrary Sudoku where
     rows <- sequence [sequence [cell | j <- [1 .. 9]] | i <- [1 .. 9]]
     return (Sudoku rows)
 
+
+
 -- | fromString converts an 81-character canonical string encoding for a
 -- | Sudoku into our internal representation
+
+-- | length(string) != 81 = error "String is not a valid 9x9 Sudoku."
+-- | otherwise = fromString (string)
+--  prop> toString (fromString s) == s
 fromString :: String -> Sudoku
-fromString = undefined -- TODO
+fromString string
+             | length string == 81 = Sudoku
+                                     $ chunksOf 9
+                                     $ maybeMapper
+                                     $ string
+             | otherwise = error "String is not a valid 9x9 Sudoku."
+
+maybeMapper :: String -> Row Cell
+maybeMapper string = case string of
+                     [] -> []
+                     x:xs
+                       | x == '.' -> ((Nothing :: Cell) : maybeMapper xs)
+                       | otherwise -> ((Just (digitToInt x) :: Cell): maybeMapper xs)
+
+
 
 -- | toString converts a Sudoku into its canonical 81-character string
 -- | encoding
--- prop> fromString (toString s) == s
+--  prop> fromString (toString s) == s
 toString :: Sudoku -> String
-toString = undefined -- TODO
+toString (Sudoku s)
+  | isSudoku (Sudoku s) = concat
+                          $ converter
+                          $ Sudoku s
+  | otherwise = error "Not a valid 9x9 Sudoku."
+
+
 
 type Block a = [a]
 
 rows :: Matrix a -> [Block a]
-rows = undefined -- TODO
+rows a = a
 
 cols :: Matrix a -> [Block a]
-cols = undefined -- TODO
+cols a = transpose a
 
 boxs :: Matrix a -> [Block a]
-boxs = undefined -- TODO
+boxs a = rows
+         $ map concat
+         $ concatMap (chunksOf 3)
+         $ cols
+         $ map (chunksOf 3) a
+
+
 
 -- | Test if a block of cells does not contain the same integer twice
 -- >>> okBlock [Just 1, Just 7, Nothing, Nothing, Just 3, Nothing, Nothing, Nothing, Just 2]
@@ -210,7 +277,28 @@ boxs = undefined -- TODO
 -- >>> okBlock [Just 1, Just 7, Nothing, Just 7, Just 3, Nothing, Nothing, Nothing, Just 2]
 -- False
 okBlock :: Block Cell -> Bool
-okBlock = undefined -- TODO
+okBlock block
+    | (length
+       $ filter (/=Nothing) block) /= (length
+                                       $ nub
+                                       $ filter (/=Nothing) block) = False
+    | otherwise = True
+
+
+
+-- | Check structure of a Sudoku: 9 rows, 9 columns, 9 boxes, each of
+-- | exactly 9 cells
+-- prop> prop_Sudoku
+prop_Sudoku :: Sudoku -> Bool
+prop_Sudoku (Sudoku s)
+   | isSudoku (Sudoku s)
+     &&
+     (length $ boxs $ s) == 9
+     &&
+     all (==9) (map length $ boxs $ s) = True
+   | otherwise = False
+
+
 
 -- | No block contains the same integer twice
 -- >>> okSudoku allBlanks
@@ -220,17 +308,57 @@ okBlock = undefined -- TODO
 -- >>> okSudoku $ fromString "364871295752936184819254736596713428431582679278469351645328917983147562127695843"
 -- True
 okSudoku :: Sudoku -> Bool
-okSudoku = undefined -- TODO
+okSudoku (Sudoku s) = (blockCheck $ rows $ s)
+                      &&
+                      (blockCheck $ cols $ s)
+                      &&
+                      (blockCheck $ boxs $ s)
 
-type Pos = (Int, Int)
+blockCheck :: [Block Cell] -> Bool
+blockCheck blocks = case blocks of
+  [] -> True
+  x:xs
+    | okBlock x -> blockCheck xs
+    | otherwise -> False
+
+
 
 -- | Return a blank position in the Sudoku
 -- >>> blank allBlanks
 -- (0,0)
 -- >>> blank example
 -- (0,2)
+
+-- A position is the (column, row) position of a given cell.
+type Pos = (Int, Int)
+
 blank :: Sudoku -> Pos
-blank = undefined -- TODO
+blank (Sudoku s) = (yPos
+                    $ map xChecker
+                    $ s,
+                    xIterator
+                    $ map xChecker
+                    $ s)
+
+yPos :: [Int] -> Int
+yPos nums = case nums of
+  [] -> error "Int out of pos."
+  x:xs
+    | x /= 11 -> fromMaybe 11 (elemIndex x nums)
+    | otherwise -> (yCheck x) + (yPos xs)
+
+yCheck :: Int -> Int
+yCheck val
+    | val == 8 = 0
+    | otherwise = 1
+
+xIterator :: [Int] -> Int
+xIterator list = fromMaybe 11 (find (/=11) list)
+
+xChecker :: [Cell] -> Int
+xChecker row = fromMaybe 11 (elemIndex Nothing row)
+
+
 
 -- | Given a list, and a tuple containing an index in the list and a new value,
 -- | update the given list with the new value at the given index.
@@ -239,14 +367,30 @@ blank = undefined -- TODO
 -- >>> ["p","qq","rrr"] !!= (0,"bepa")
 -- ["bepa","qq","rrr"]
 (!!=) :: [a] -> (Int, a) -> [a]
-(!!=) = undefined -- TODO
+(!!=) list (index, val) = take index list
+                          ++
+                          [val]
+                          ++
+                          drop (index+1) list
+
+
 
 -- | Given a Sudoku, a position, and a new cell value,
 -- | update the given Sudoku at the given position with the new value.
 update :: Sudoku -> Pos -> Int -> Sudoku
-update = undefined -- TODO
+update (Sudoku s) (y,x) val = Sudoku
+                              $ s !!= (y, (s !! y) !!= (x, Just val))
+
+
 
 -- | solve takes an 81-character encoding of a Sudoku puzzle and returns a
 -- | list of solutions for it, if any
 solve :: String -> [String]
-solve = undefined -- TODO
+solve string = solver
+               $ fromString string
+
+solver :: Sudoku -> [String]
+solver s
+  | not (okSudoku s) = []
+  | noBlanks s = [toString s]
+  | otherwise = concatMap (\val -> solver (update s (blank s) val)) [1..9]
