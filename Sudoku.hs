@@ -184,6 +184,9 @@ noBlanks (Sudoku s) = all (==0) [length $ filter (==Nothing) (concat $ s)]
 --    . 8 3 . . . . 6 .
 --    . . 7 6 9 . . 4 3
 
+-- | This helper function is used to generate a readable list from a given sudoku,
+-- | This is especially helpful as we can use it to change the Maybe Types in a sudoku
+-- | and then generate a readable representation
 converter :: Sudoku -> [[Char]]
 converter (Sudoku s) = map concat
                        $ chunksOf 9
@@ -233,6 +236,9 @@ fromString string
                                      $ string
              | otherwise = error "String is not a valid 9x9 Sudoku."
 
+-- | Pretty much a reverse of the converter helper function,
+-- | This one takes a given string representation
+-- | And returns the valid sudoku Maybe type for each character in the string
 maybeMapper :: String -> Row Cell
 maybeMapper string = case string of
                      [] -> []
@@ -313,7 +319,8 @@ okSudoku (Sudoku s) = (blockCheck $ rows $ s)
                       (blockCheck $ cols $ s)
                       &&
                       (blockCheck $ boxs $ s)
-
+-- | Check if every block is viable in a given sudoku
+-- | so that our okSudoku can be cleaner than just "all (==True) (map okBlock etc)"
 blockCheck :: [Block Cell] -> Bool
 blockCheck blocks = case blocks of
   [] -> True
@@ -340,6 +347,18 @@ blank (Sudoku s) = (yPos
                     $ map xChecker
                     $ s)
 
+-- | helper to give indexes of Nothing in every row,
+-- | if there isn't a Nothing val in the row, we get 11
+xChecker :: [Cell] -> Int
+xChecker row = fromMaybe 11 (elemIndex Nothing row)
+
+-- | helper to take a list of xChecker values and
+-- | return the first value that isn't 11 (i.e return the index of a valid nothing value)
+xIterator :: [Int] -> Int
+xIterator list = fromMaybe 11 (find (/=11) list)
+
+-- | take the list of xChecker values and find the index for the first value that isnt 11
+-- | this is our y value
 yPos :: [Int] -> Int
 yPos nums = case nums of
   [] -> error "Int out of pos."
@@ -347,17 +366,12 @@ yPos nums = case nums of
     | x /= 11 -> fromMaybe 11 (elemIndex x nums)
     | otherwise -> (yCheck x) + (yPos xs)
 
+-- | checker to make sure that y doesnt go out of index range
+-- | if this function didnt exist, if y was 8 in yPos, we would return 9 and this would be out of index
 yCheck :: Int -> Int
 yCheck val
     | val == 8 = 0
     | otherwise = 1
-
-xIterator :: [Int] -> Int
-xIterator list = fromMaybe 11 (find (/=11) list)
-
-xChecker :: [Cell] -> Int
-xChecker row = fromMaybe 11 (elemIndex Nothing row)
-
 
 
 -- | Given a list, and a tuple containing an index in the list and a new value,
@@ -389,6 +403,8 @@ solve :: String -> [String]
 solve string = solver
                $ fromString string
 
+-- | backtracking solver
+-- | brute force and check recursively with every value as something between 1 - 9
 solver :: Sudoku -> [String]
 solver s
   | not (okSudoku s) = []
