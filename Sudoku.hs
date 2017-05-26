@@ -227,7 +227,6 @@ instance Arbitrary Sudoku where
 
 -- | length(string) != 81 = error "String is not a valid 9x9 Sudoku."
 -- | otherwise = fromString (string)
---  prop> toString (fromString s) == s
 fromString :: String -> Sudoku
 fromString string
              | length string == 81 = Sudoku
@@ -263,17 +262,20 @@ toString (Sudoku s)
 type Block a = [a]
 
 rows :: Matrix a -> [Block a]
-rows a = a
+rows s = s
 
 cols :: Matrix a -> [Block a]
-cols a = transpose a
+cols s = transpose s
 
+-- help received from Arham Qureshi - u6378881,
+-- Arham showed me that an easier way to split the sudoku into boxes
+-- is by first creating the 3 chunks of boxes,
+-- then transposing them and cutting each of those into chunks of 3
 boxs :: Matrix a -> [Block a]
-boxs a = rows
-         $ map concat
+boxs s = map concat
          $ concatMap (chunksOf 3)
          $ cols
-         $ map (chunksOf 3) a
+         $ map (chunksOf 3) s
 
 
 
@@ -283,12 +285,10 @@ boxs a = rows
 -- >>> okBlock [Just 1, Just 7, Nothing, Just 7, Just 3, Nothing, Nothing, Nothing, Just 2]
 -- False
 okBlock :: Block Cell -> Bool
-okBlock block
-    | (length
-       $ filter (/=Nothing) block) /= (length
-                                       $ nub
-                                       $ filter (/=Nothing) block) = False
-    | otherwise = True
+okBlock [] = True
+okBlock (x:xs)
+    | x == Nothing = okBlock xs
+    | otherwise = (notElem x xs) && (okBlock xs)
 
 
 
@@ -403,10 +403,15 @@ solve :: String -> [String]
 solve string = solver
                $ fromString string
 
+
+-- help received from Nathaniel McGrath - u5643010,
+-- Nathaniel explained to me how the lambda notation works
+-- and how to use it to easily implement the backtrack solving algorithm
 -- | backtracking solver
 -- | brute force and check recursively with every value as something between 1 - 9
 solver :: Sudoku -> [String]
-solver s
-  | not (okSudoku s) = []
-  | noBlanks s = [toString s]
-  | otherwise = concatMap (\val -> solver (update s (blank s) val)) [1..9]
+solver s = case s of
+    s
+     | not (okSudoku s) -> []
+     | noBlanks s -> [toString s]
+     | otherwise -> concatMap (\val -> solver (update s (blank s) val)) [1..9]
